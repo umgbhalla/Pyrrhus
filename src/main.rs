@@ -61,6 +61,11 @@ async fn misc(word: String) -> String {
 }
 
 #[get("/")]
+async fn root() -> impl Responder {
+    HttpResponse::Ok().body("cr0nus")
+}
+
+#[get("/healthz")]
 async fn health() -> impl Responder {
     HttpResponse::Ok().body("Services up")
 }
@@ -132,6 +137,7 @@ async fn get_server() -> std::io::Result<()> {
         App::new()
             // "/"
             .service(health)
+            .service(root)
             .service(environment)
             .service(echo)
             .service(

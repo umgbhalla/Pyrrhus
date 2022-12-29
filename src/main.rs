@@ -1,10 +1,13 @@
-#[allow(dead_code)]
-#[allow(unused_variables)]
+// #[allow(dead_code)]
+// #[allow(unused_variables)]
+extern crate base64;
+extern crate libucl;
 use actix_web::{
     get, post,
     web::{self, Query},
     App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
+use base64::encode;
 use serde::Deserialize;
 use std::env;
 use std::fmt;
@@ -22,6 +25,7 @@ impl fmt::Display for Password {
         Ok(())
     }
 }
+// async fn misc(word: String) -> String {}
 async fn misc(word: String) -> String {
     let echofirst = Command::new("echo")
         .arg("-en")
@@ -57,7 +61,7 @@ async fn misc(word: String) -> String {
 }
 
 #[get("/")]
-async fn hello() -> impl Responder {
+async fn health() -> impl Responder {
     HttpResponse::Ok().body("Services up")
 }
 
@@ -66,31 +70,13 @@ async fn echo(req_body: String) -> impl Responder {
     HttpResponse::Ok().body(req_body)
 }
 
-#[derive(Deserialize, Debug)]
-struct Foo {
-    id: String,
-}
-
-#[get("/search")]
-async fn search(req: HttpRequest) -> impl Responder {
-    let query = req.query_string();
-    match Query::<Foo>::from_query(query) {
-        Ok(foo) => HttpResponse::Ok().body(format!("Hi! {foo:?}")),
-        Err(e) => HttpResponse::BadRequest().body(e.to_string()),
-    }
-}
-
-#[get("/bar")]
-async fn bar() -> impl Responder {
-    HttpResponse::Ok().body("Hello bar!")
-}
-
-async fn manual_hello() -> impl Responder {
+#[get("/env")]
+async fn environment() -> impl Responder {
     // Test env "TARGET" which defined when `docker run`, or `gcloud run deploy --set-env-vars`
     // Depend on your platform target. (See README.md)
     let test_target = match env::var("TARGET") {
-        Ok(target) => format!("Hey {target}!"),
-        Err(_e) => "No TARGET env defined!".to_owned(),
+        Ok(target) => format!("system running in {target} mode"),
+        Err(_e) => "No TARGET env defined! , running local ?".to_owned(),
     };
 
     // Response with test_target
@@ -111,23 +97,52 @@ async fn crypto(req: HttpRequest) -> impl Responder {
 }
 
 async fn get_server() -> std::io::Result<()> {
+    let parser = libucl::Parser::new();
+
+    let config = match parser.parse_file("test.conf") {
+        Ok(conf) => conf,
+        Err(err) => panic!("{:?}", err),
+    };
+
+    println!("{:?}", config.fetch("lol").and_then(|val| val.as_string()));
+    println!(
+        "{:?}",
+        config
+            .fetch_path("placki.duze")
+            .and_then(|val| val.as_bool())
+    );
+    println!(
+        "{:?}",
+        config
+            .fetch_path("placki.średnica")
+            .and_then(|val| val.as_int())
+    );
+    println!(
+        "{:?}",
+        config
+            .fetch_path("non.existent.path")
+            .and_then(|val| val.as_string())
+    );
+
+    let port = match env::var("PORT") {
+        Ok(targetport) => targetport,
+        Err(_e) => "8080".to_string(),
+    };
     HttpServer::new(|| {
         App::new()
             // "/"
-            .service(hello)
-            .service(search)
+            .service(health)
+            .service(environment)
+            .service(echo)
             .service(
-                web::scope("/api/v1")
-                    // "/api/v1/search?id=bar"
-                    .service(search)
-                    // "/api/v1/burn?id=bar"
-                    .service(crypto)
-                    // "/api/v1/bar"
-                    .service(bar),
+                web::scope("/api").service(
+                    web::scope("/v1")
+                        // "/api/v1/burn?word=pass"
+                        .service(crypto),
+                ),
             )
-            .route("/hey", web::get().to(manual_hello))
     })
-    .bind("0.0.0.0:8080")?
+    .bind(format!("0.0.0.0:{}", port))?
     .run()
     .await
 }
@@ -139,13 +154,12 @@ async fn main() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::hello;
+    use crate::health;
     use actix_web::App;
 
     #[actix_rt::test]
     async fn test() {
-        let srv = actix_test::start(|| App::new().service(hello));
-
+        let srv = actix_test::start(|| App::new().service(health));
         let req = srv.get("/");
         let response = req.send().await.unwrap();
         assert!(response.status().is_success());

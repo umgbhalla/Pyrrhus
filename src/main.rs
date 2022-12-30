@@ -109,7 +109,10 @@ async fn main() -> Result<(), impl Error> {
             // )
             .service(SwaggerUi::new("/docs/{_:.*}").url("/api-doc/openapi.json", openapi.clone()))
     })
-    .bind((Ipv4Addr::UNSPECIFIED, env::var("PORT")))?
+    .bind((
+        Ipv4Addr::UNSPECIFIED,
+        env::var("PORT").unwrap().parse::<u16>().unwrap(),
+    ))?
     .run()
     .await
 }
